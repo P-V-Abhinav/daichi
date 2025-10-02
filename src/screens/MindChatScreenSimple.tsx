@@ -37,8 +37,7 @@ interface ConversationState {
     stress: number;          // Stress & Relaxation (higher = better management)
     purpose: number;         // Sense of Purpose
   };
-  microInsights: string[];
-  moodBadge: string;
+  improvements: { area: string; detail: string }[];
 }
 
 interface Props {
@@ -66,8 +65,7 @@ export const MindChatScreen: React.FC<Props> = ({ navigation, userProfile }) => 
       stress: 3,
       purpose: 3
     },
-    microInsights: [],
-    moodBadge: '🤔'
+    improvements: []
   });
 
   const MAX_CONVERSATIONS = 15; // Maximum limit - let Gemini decide when to conclude
@@ -385,55 +383,34 @@ Return either:
       const fullConversation = messages.map(m => `${m.isAI ? 'AI' : 'User'}: ${m.text}`).join('\n');
       const userResponses = conversationState.responses.join(' | ');
       
-      const finalAnalysisPrompt = `You are a clinical psychologist conducting final wellness assessment.
+      const finalAnalysisPrompt = `You are a concise mental wellbeing summarizer. Produce minimal structured output only.
 
-User Profile:
-- Name: ${userProfile?.name || 'User'}
-- Age: ${userProfile?.age || 'Unknown'}
-- Health Goals: ${userProfile?.healthGoals?.join(', ') || 'General wellness'}
-- Health Conditions: ${userProfile?.healthConditions?.join(', ') || 'None'}
-- Activity Level: ${userProfile?.activityLevel || 'Unknown'}
-- Dietary Preferences: ${userProfile?.dietaryPreferences?.join(', ') || 'None'}
+PROFILE:
+Name: ${userProfile?.name || 'User'} | Age: ${userProfile?.age || 'Unknown'} | Goals: ${userProfile?.healthGoals?.join(', ') || 'General'} | Conditions: ${userProfile?.healthConditions?.join(', ') || 'None'} | Activity: ${userProfile?.activityLevel || 'Unknown'}
 
-FULL CONVERSATION:
+CONVERSATION:
 ${fullConversation}
 
-USER RESPONSES: ${userResponses}
+INTERNAL STATE (do not repeat verbatim to user): tone=${conversationState.emotionalTone}; stressFlags=${conversationState.stressFlags.join(', ')}; dims=${JSON.stringify(conversationState.silentAnalysis)}
 
-CURRENT EMOTIONAL STATE: ${conversationState.emotionalTone}
-STRESS FLAGS: ${conversationState.stressFlags.join(', ')}
-CURRENT DIMENSION SCORES: ${JSON.stringify(conversationState.silentAnalysis)}
-
-Generate comprehensive final assessment in EXACT JSON format:
+OUTPUT STRICT JSON (NO extra keys):
 {
   "overallScore": 0-100,
-  "dimensions": {
-    "energy": 1-5,
-    "emotionalBalance": 1-5,
-    "socialConnection": 1-5,
-    "stress": 1-5,
-    "purpose": 1-5
-  },
-  "moodBadge": "🌟|😊|😐|😔|💪|🌈|⚡",
-  "microTips": ["personalized tip 1 (max 12 words)", "tip 2", "tip 3"],
-  "keyInsight": "personalized insight considering their health goals and profile (max 25 words)",
-  "trendIndicator": "improving|stable|concerning"
+  "improvements": [
+    {"area": "One or two words", "detail": "Clear, actionable improvement guidance (max 22 words)"},
+    {"area": "...", "detail": "..."},
+    {"area": "...", "detail": "..."},
+    {"area": "...", "detail": "..."},
+    {"area": "...", "detail": "..."}
+  ]
 }
 
-Scoring Guidelines:
-- 80-100: Thriving (high energy, balanced emotions, strong connections)
-- 60-79: Good (generally positive with minor areas for improvement)
-- 40-59: Moderate (mixed signals, some concerning patterns)
-- 20-39: Concerning (multiple stress indicators, low energy/connection)
-- 0-19: Critical (significant distress signals)
-
-Personalization:
-- Consider their health goals in micro-tips
-- Reference their activity level for energy recommendations
-- Account for health conditions in stress management advice
-- Make insights relevant to their age and lifestyle
-
-Return ONLY valid JSON.`;
+Rules:
+- improvements MUST be exactly 5.
+- No emojis, no motivational fluff, purely constructive.
+- Tailor to profile context & subtle signals.
+- Avoid repeating identical wording.
+Return ONLY JSON.`;
 
       const result = await model.generateContent(finalAnalysisPrompt);
       let responseText = result.response.text().trim();
@@ -448,21 +425,12 @@ Return ONLY valid JSON.`;
         const analysis = JSON.parse(responseText);
         const calculatedScore = Math.max(0, Math.min(100, analysis.overallScore || 65));
         setFinalScore(calculatedScore);
-        
-        // Update conversation state with final analysis
+
         setConversationState(prev => ({
           ...prev,
-          silentAnalysis: analysis.dimensions || prev.silentAnalysis,
-          microInsights: analysis.microTips || ['Take a mindful walk', 'Connect with a friend', 'Practice deep breathing'],
-          moodBadge: analysis.moodBadge || '😊'
+          improvements: Array.isArray(analysis.improvements) ? analysis.improvements.slice(0,5) : []
         }));
-        
-        console.log('Mind Score Analysis:', {
-          score: calculatedScore,
-          dimensions: analysis.dimensions,
-          insight: analysis.keyInsight,
-          trend: analysis.trendIndicator
-        });
+        console.log('Mind Score Minimal Analysis:', { score: calculatedScore, improvements: analysis.improvements });
         
       } catch (parseError) {
         console.error('Final analysis JSON parse error:', parseError, 'Response:', responseText);
@@ -472,8 +440,13 @@ Return ONLY valid JSON.`;
         setFinalScore(fallbackScore);
         setConversationState(prev => ({
           ...prev,
-          microInsights: ['Take a mindful break', 'Connect with someone you trust', 'Practice gratitude'],
-          moodBadge: fallbackScore > 70 ? '😊' : fallbackScore > 50 ? '😐' : '💙'
+            improvements: [
+              { area: 'Balance', detail: 'Add one short recharge break to stabilize energy.' },
+              { area: 'Stress', detail: 'Use a 4-4-6 breathing cycle once today.' },
+              { area: 'Connection', detail: 'Initiate a brief positive check-in with someone.' },
+              { area: 'Focus', detail: 'Define one clear win for the next block of time.' },
+              { area: 'Recovery', detail: 'Aim for a consistent wind-down 45 mins before sleep.' }
+            ]
         }));
       }
 
@@ -482,8 +455,13 @@ Return ONLY valid JSON.`;
       setFinalScore(60); // Moderate default
       setConversationState(prev => ({
         ...prev,
-        microInsights: ['Take time for yourself', 'Stay connected', 'Practice self-care'],
-        moodBadge: '😊'
+        improvements: [
+          { area: 'Routine', detail: 'Stabilize wake and sleep timing as a base.' },
+          { area: 'Hydration', detail: 'Drink a full glass of water within 30 minutes.' },
+          { area: 'Movement', detail: 'Insert a 5-minute mobility or walk interval.' },
+          { area: 'Reflection', detail: 'Label one emotion accurately today.' },
+          { area: 'Focus', detail: 'Remove one distraction from your primary task block.' }
+        ]
       }));
     } finally {
       setIsLoading(false);
@@ -508,54 +486,23 @@ Return ONLY valid JSON.`;
   );
 
   const renderScoreScreen = () => (
-    <ScrollView 
-      style={styles.scoreContainer}
-      contentContainerStyle={styles.scoreContentContainer}
-    >
-      {/* Mood Badge */}
-      <View style={styles.moodBadgeContainer}>
-        <Text style={styles.moodBadge}>{conversationState.moodBadge}</Text>
-        <Text style={styles.moodLabel}>Today's Mood</Text>
+    <ScrollView style={styles.scoreContainer} contentContainerStyle={styles.minimalContent}>
+      <View style={styles.minimalCard}>
+        <Text style={styles.minimalLabel}>Mind Score</Text>
+        <Text style={styles.minimalScore}>{finalScore ?? '--'}</Text>
+        <View style={styles.minimalBarTrack}>
+          <View style={[styles.minimalBarFill,{width:`${finalScore ?? 0}%`}]} />
+        </View>
       </View>
-      
-      {/* Overall Score */}
-      <View style={styles.scoreCircle}>
-        <Text style={styles.scoreNumber}>{finalScore}</Text>
-        <Text style={styles.scoreLabel}>Mind Score</Text>
-      </View>
-
-      {/* Dimension Scores */}
-      <View style={styles.dimensionsContainer}>
-        <Text style={styles.dimensionsTitle}>Wellness Dimensions</Text>
-        {Object.entries(conversationState.silentAnalysis).map(([key, value]) => (
-          <View key={key} style={styles.dimensionRow}>
-            <Text style={styles.dimensionLabel}>
-              {key === 'energy' ? '⚡ Energy' :
-               key === 'emotionalBalance' ? '💝 Emotional' :
-               key === 'socialConnection' ? '🤝 Social' :
-               key === 'stress' ? '🧘 Stress Management' :
-               '🎯 Purpose'}
-            </Text>
-            <View style={styles.dimensionBar}>
-              <View style={[styles.dimensionFill, { width: `${(value / 5) * 100}%` }]} />
-            </View>
-            <Text style={styles.dimensionValue}>{value}/5</Text>
+      <View style={styles.improvementsBlock}>
+        <Text style={styles.improvementsTitle}>Key Improvements</Text>
+        {(conversationState.improvements || []).slice(0,5).map((imp,i) => (
+          <View key={i} style={styles.improvementItem}>
+            <Text style={styles.improvementArea}>{imp.area}</Text>
+            <Text style={styles.improvementDetail}>{imp.detail}</Text>
           </View>
         ))}
       </View>
-
-      {/* Micro Tips */}
-      {conversationState.microInsights.length > 0 && (
-        <View style={styles.tipsContainer}>
-          <Text style={styles.tipsTitle}>✨ Micro-Tips for You</Text>
-          {conversationState.microInsights.map((tip, index) => (
-            <View key={index} style={styles.tipItem}>
-              <Text style={styles.tipText}>• {tip}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
       <TouchableOpacity
         style={styles.restartButton}
         onPress={() => {
@@ -566,13 +513,12 @@ Return ONLY valid JSON.`;
           setConversationState(prev => ({
             ...prev,
             silentAnalysis: { energy: 3, emotionalBalance: 3, socialConnection: 3, stress: 3, purpose: 3 },
-            microInsights: [],
-            moodBadge: '🤔'
+            improvements: []
           }));
           generateFirstQuestion();
         }}
       >
-        <Text style={styles.restartButtonText}>Take Another Check-in</Text>
+        <Text style={styles.restartButtonText}>New Check-in</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -746,44 +692,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  scoreContentContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-    minHeight: '100%',
-  },
-  scoreTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 32,
-  },
-  scoreCircle: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: '#4A90E2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  scoreNumber: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  scoreLabel: {
-    fontSize: 16,
-    color: 'white',
-    opacity: 0.9,
-  },
-  scoreDescription: {
-    fontSize: 18,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 32,
-    paddingHorizontal: 20,
-  },
   restartButton: {
     backgroundColor: '#4A90E2',
     paddingHorizontal: 32,
@@ -796,82 +704,68 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  // New styles for enhanced UI
-  moodBadgeContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
+  // Minimal result styles
+  minimalContent: {
+    padding: 28,
   },
-  moodBadge: {
-    fontSize: 48,
-    marginBottom: 8,
-  },
-  moodLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  dimensionsContainer: {
-    width: '100%',
-    marginTop: 24,
-    marginBottom: 24,
-  },
-  dimensionsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  dimensionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 8,
-  },
-  dimensionLabel: {
-    width: 120,
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  dimensionBar: {
-    flex: 1,
-    height: 8,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 4,
-    marginHorizontal: 12,
-    overflow: 'hidden',
-  },
-  dimensionFill: {
-    height: '100%',
-    backgroundColor: '#4A90E2',
-    borderRadius: 4,
-  },
-  dimensionValue: {
-    width: 32,
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  tipsContainer: {
-    width: '100%',
+  minimalCard: {
     backgroundColor: 'white',
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     marginBottom: 24,
   },
-  tipsTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 12,
-  },
-  tipItem: {
+  minimalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
     marginBottom: 8,
   },
-  tipText: {
-    fontSize: 14,
+  minimalScore: {
+    fontSize: 56,
+    fontWeight: '700',
+    color: '#1F2937',
+    letterSpacing: -1,
+  },
+  minimalBarTrack: {
+    height: 6,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginTop: 12,
+  },
+  minimalBarFill: {
+    height: '100%',
+    backgroundColor: '#4A90E2'
+  },
+  improvementsBlock: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  improvementsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  improvementItem: {
+    marginBottom: 14,
+  },
+  improvementArea: {
+    fontSize: 13,
+    fontWeight: '700',
     color: '#374151',
-    lineHeight: 20,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  improvementDetail: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#4B5563'
   },
 });
