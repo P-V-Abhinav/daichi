@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const { width } = Dimensions.get('window');
 
@@ -41,6 +42,17 @@ export const DashboardScreen: React.FC<Props> = ({ navigation, userProfile, onNa
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [gamificationData, setGameificationData] = useState<GameificationData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisData, setAnalysisData] = useState<null | {
+    riskFlags: string[];
+    wellnessSummary: string;
+    priorityFocus: string[];
+    dailySuggestions: string[];
+    nutritionAlignment: string;
+    mindPattern: string;
+    readinessScore: number;
+  }>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   // Animation refs
   const fadeAnim = new Animated.Value(0);
@@ -48,6 +60,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation, userProfile, onNa
 
   useEffect(() => {
     loadDashboardData();
+    runPersonalizedAnalysis();
     
     // Entrance animation
     Animated.parallel([
@@ -179,6 +192,116 @@ export const DashboardScreen: React.FC<Props> = ({ navigation, userProfile, onNa
       setLoading(false);
     }
   };
+
+  const runPersonalizedAnalysis = async () => {
+    if (!userProfile) return;
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.EXPO_PUBLIC_GEMINI_API_KEY || '');
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash-lite',
+        generationConfig: { temperature: 0.4, maxOutputTokens: 400 }
+      });
+
+      const prompt = `You are a holistic health coach producing a concise dashboard summary.
+
+USER PROFILE JSON:
+${JSON.stringify(userProfile, null, 2)}
+
+RECENT FOOD (if any): ${JSON.stringify((dashboardData?.recentFoodLogs || []).slice(0,3))}
+RECENT MIND CHECKS (if any): ${JSON.stringify((dashboardData?.recentMindScores || []).slice(0,2))}
+
+Return STRICT JSON ONLY:
+{
+  "riskFlags": ["max 4 short risk signals"],
+  "wellnessSummary": "one sentence holistic snapshot (<=22 words)",
+  "priorityFocus": ["3 short focus areas"],
+  "dailySuggestions": ["suggestion 1 (<=10 words)", "suggestion 2", "suggestion 3"],
+  "nutritionAlignment": "short note on current nutrition alignment",
+  "mindPattern": "short observation on mental pattern",
+  "readinessScore": 0-100
+}`;
+
+      const result = await model.generateContent(prompt);
+      let text = result.response.text().trim();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) text = jsonMatch[0];
+      const parsed = JSON.parse(text);
+      setAnalysisData({
+        riskFlags: parsed.riskFlags || [],
+        wellnessSummary: parsed.wellnessSummary || 'Balanced baseline today.',
+        priorityFocus: parsed.priorityFocus || [],
+        dailySuggestions: parsed.dailySuggestions || ['Hydrate well','Take a mindful pause','Light movement break'],
+        nutritionAlignment: parsed.nutritionAlignment || 'Nutrition pattern pending more scans.',
+        mindPattern: parsed.mindPattern || 'Stable emotional tone with moderate stress modulation.',
+        readinessScore: Math.max(0, Math.min(100, parsed.readinessScore || 60))
+      });
+    } catch (e:any) {
+      console.error('Analysis error', e);
+      setAnalysisError('Could not refresh insights');
+      setAnalysisData({
+        riskFlags: ['insufficient-data'],
+        wellnessSummary: 'Baseline stable — keep consistent routines.',
+        priorityFocus: ['Sleep consistency','Balanced meals','Light activity'],
+        dailySuggestions: ['Drink water now','Stretch 2 mins','Deep breaths'],
+        nutritionAlignment: 'Need more meal scans for pattern.',
+        mindPattern: 'Limited mood entries—add a mind check.',
+        readinessScore: 62
+      });
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const renderPersonalizedAnalysis = () => (
+    <View style={styles.analysisContainer}>
+      <View style={styles.analysisHeaderRow}>
+        <Text style={styles.sectionTitle}>Personalized Snapshot</Text>
+        <TouchableOpacity style={styles.refreshButton} onPress={runPersonalizedAnalysis} disabled={analysisLoading}>
+          <Ionicons name={analysisLoading ? 'sync' : 'refresh'} size={18} color={analysisLoading ? '#9CA3AF' : '#2563EB'} />
+          <Text style={[styles.refreshText, analysisLoading && { color: '#9CA3AF' }]}>{analysisLoading ? 'Updating' : 'Refresh'}</Text>
+        </TouchableOpacity>
+      </View>
+      {analysisError && <Text style={styles.errorText}>{analysisError}</Text>}
+      <View style={styles.readinessCard}>
+        <Text style={styles.readinessLabel}>Readiness</Text>
+        <Text style={styles.readinessScore}>{analysisData?.readinessScore ?? '--'}</Text>
+        <View style={styles.readinessBarTrack}>
+          <View style={[styles.readinessBarFill,{width:`${analysisData ? analysisData.readinessScore : 0}%`}]}/>
+        </View>
+        <Text style={styles.readinessSummary}>{analysisData?.wellnessSummary || 'Loading summary...'}</Text>
+      </View>
+      <View style={styles.fixedRowBoxes}>
+        <View style={styles.fixedBox}>
+          <Text style={styles.fixedBoxTitle}>Focus</Text>
+          {(analysisData?.priorityFocus || []).slice(0,3).map(f => (
+            <Text key={f} style={styles.fixedItem}>• {f}</Text>
+          ))}
+        </View>
+        <View style={styles.fixedBox}>
+          <Text style={styles.fixedBoxTitle}>Risks</Text>
+          {(analysisData?.riskFlags || []).slice(0,4).map(r => (
+            <Text key={r} style={styles.riskItem}>• {r}</Text>
+          ))}
+        </View>
+      </View>
+      <View style={styles.suggestionPanel}>
+        <Text style={styles.suggestionTitle}>Daily Suggestions</Text>
+        <View style={styles.suggestionsRow}>
+          {(analysisData?.dailySuggestions || []).slice(0,3).map(s => (
+            <View key={s} style={styles.suggestionPill}>
+              <Text style={styles.suggestionPillText}>{s}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.inlineMeta}>
+          <Text style={styles.metaLine}>Nutrition: {analysisData?.nutritionAlignment}</Text>
+          <Text style={styles.metaLine}>Mind: {analysisData?.mindPattern}</Text>
+        </View>
+      </View>
+    </View>
+  );
 
   const calculateGamificationData = (data: any): GameificationData => {
     const totalPoints = data.profile.total_points || 0;
@@ -559,7 +682,8 @@ export const DashboardScreen: React.FC<Props> = ({ navigation, userProfile, onNa
         contentContainerStyle={styles.scrollContent}
       >
         {renderHeader()}
-        {renderPointsAndStreak()}
+  {renderPersonalizedAnalysis()}
+  {renderPointsAndStreak()}
         {renderNextMilestone()}
         {renderTodaysProgress()}
         {renderQuickActions()}
@@ -816,6 +940,146 @@ const styles = StyleSheet.create({
   achievementsContainer: {
     paddingHorizontal: 20,
     marginBottom: 24,
+  },
+  // Analysis Section
+  analysisContainer: {
+    backgroundColor: 'white',
+    marginHorizontal: 20,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#E5E7EB'
+  },
+  analysisHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  refreshText: {
+    marginLeft: 4,
+    color: '#2563EB',
+    fontSize: 12,
+    fontWeight: '500'
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  readinessCard: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  readinessLabel: {
+    fontSize: 12,
+    color: '#0369A1',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  readinessScore: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: '#0C4A6E',
+  },
+  readinessBarTrack: {
+    height: 6,
+    backgroundColor: '#E0F2FE',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginVertical: 8,
+  },
+  readinessBarFill: {
+    height: '100%',
+    backgroundColor: '#0284C7'
+  },
+  readinessSummary: {
+    fontSize: 13,
+    color: '#0C4A6E',
+    lineHeight: 18,
+  },
+  fixedRowBoxes: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  fixedBox: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 12,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB'
+  },
+  fixedBoxTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  fixedItem: {
+    fontSize: 12,
+    color: '#374151',
+    marginBottom: 4,
+  },
+  riskItem: {
+    fontSize: 12,
+    color: '#DC2626',
+    marginBottom: 4,
+  },
+  suggestionPanel: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB'
+  },
+  suggestionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 10,
+  },
+  suggestionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+  },
+  suggestionPill: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  suggestionPillText: {
+    fontSize: 12,
+    color: '#4338CA',
+    fontWeight: '500'
+  },
+  inlineMeta: {
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    paddingTop: 8,
+  },
+  metaLine: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginBottom: 4,
   },
   sectionHeader: {
     flexDirection: 'row',
