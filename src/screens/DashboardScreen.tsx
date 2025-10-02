@@ -9,6 +9,7 @@ import {
   Animated,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -17,6 +18,7 @@ const { width } = Dimensions.get('window');
 interface Props {
   navigation: any;
   userProfile: any;
+  onNavigateToProfile?: () => void;
 }
 
 interface GameificationData {
@@ -35,7 +37,7 @@ interface GameificationData {
   };
 }
 
-export const DashboardScreen: React.FC<Props> = ({ navigation, userProfile }) => {
+export const DashboardScreen: React.FC<Props> = ({ navigation, userProfile, onNavigateToProfile }) => {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [gamificationData, setGameificationData] = useState<GameificationData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,22 +69,101 @@ export const DashboardScreen: React.FC<Props> = ({ navigation, userProfile }) =>
       // Mock data for demo (database removed)
       const data = {
         profile: userProfile,
-        recentFoodLogs: [],
-        recentMindScores: [],
+        recentFoodLogs: [
+          {
+            id: 1,
+            food_name: 'Grilled Chicken Salad',
+            total_calories: 380,
+            created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
+            health_score: 85,
+            meal_type: 'lunch'
+          },
+          {
+            id: 2,
+            food_name: 'Masala Chai & Biscuits',
+            total_calories: 150,
+            created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), // 5 hours ago
+            health_score: 65,
+            meal_type: 'snack'
+          },
+          {
+            id: 3,
+            food_name: 'Idli Sambar',
+            total_calories: 320,
+            created_at: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(), // Yesterday
+            health_score: 90,
+            meal_type: 'breakfast'
+          }
+        ],
+        recentMindScores: [
+          {
+            id: 1,
+            overall_score: 78,
+            created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Yesterday
+            emotional_state: 'optimistic',
+            stress_level: 'moderate'
+          },
+          {
+            id: 2,
+            overall_score: 85,
+            created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
+            emotional_state: 'energetic',
+            stress_level: 'low'
+          }
+        ],
         achievements: [
           {
+            id: 1,
             badge_name: 'First Steps',
             category: 'streak',
-            description: 'Completed first check-in',
+            description: 'Completed first wellness check-in! 🎉',
             points_value: 50,
+            earned_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
           },
           {
+            id: 2,
             badge_name: 'Food Explorer',
             category: 'food',
-            description: 'Scanned 5 meals',
+            description: 'Scanned 5 different meals 📸',
             points_value: 100,
+            earned_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
           },
+          {
+            id: 3,
+            badge_name: 'Mind Champion',
+            category: 'mind',
+            description: 'Completed 3 mind check-ins this week 🧠',
+            points_value: 150,
+            earned_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+          },
+          {
+            id: 4,
+            badge_name: 'Consistency King',
+            category: 'streak',
+            description: 'Maintained 7-day wellness streak! 🔥',
+            points_value: 200,
+            earned_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+          }
         ],
+        todaysFoodLogs: [
+          {
+            id: 1,
+            food_name: 'Grilled Chicken Salad',
+            total_calories: 380,
+            created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          },
+          {
+            id: 2,
+            food_name: 'Masala Chai & Biscuits',
+            total_calories: 150,
+            created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+          }
+        ],
+        latestMindScore: {
+          overall_score: 78,
+          emotional_state: 'optimistic',
+          stress_level: 'moderate'
+        }
       };
       
       setDashboardData(data);
@@ -458,7 +539,20 @@ export const DashboardScreen: React.FC<Props> = ({ navigation, userProfile }) =>
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      {/* Header with Hamburger Menu */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.hamburgerButton}
+          onPress={onNavigateToProfile}
+        >
+          <Ionicons name="menu" size={24} color="#1F2937" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>YouMatter AI</Text>
+        <TouchableOpacity style={styles.notificationButton}>
+          <Ionicons name="notifications-outline" size={24} color="#1F2937" />
+        </TouchableOpacity>
+      </View>
       <ScrollView 
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
@@ -471,7 +565,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation, userProfile }) =>
         {renderQuickActions()}
         {renderRecentAchievements()}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -503,7 +597,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  hamburgerButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  notificationButton: {
+    padding: 4,
   },
   headerContent: {
     flex: 1,

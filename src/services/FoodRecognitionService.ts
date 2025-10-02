@@ -93,18 +93,23 @@ ANALYZE THIS FOOD IMAGE WITH PRECISION:
 
 1. FOOD IDENTIFICATION:
    - Identify ALL visible food items with confidence scores (0-100)
-   - Estimate portion sizes in grams using visual cues (plate size, utensils, comparison objects)
+   - Estimate portion sizes ACCURATELY using visual cues:
+     * Compare to standard plate size (10-12 inches)
+     * Use utensils as reference (spoon ≈ 15ml, fork length ≈ 7 inches)
+     * Consider density and volume of each food item
+     * Provide weight estimates in grams (be conservative but realistic)
    - Identify cooking methods (fried, grilled, steamed, raw, baked, sautéed)
 
-2. NUTRITIONAL ANALYSIS:
-   - Calculate detailed macronutrients for each item:
-     * Calories (kcal)
-     * Protein (g)
-     * Carbohydrates (g)
-     * Fats (g)
-     * Fiber (g)
-     * Sugar (g)
+2. NUTRITIONAL ANALYSIS (USE STANDARD NUTRITION DATABASES):
+   - Calculate detailed macronutrients for ACTUAL ESTIMATED QUANTITIES:
+     * Calories (kcal) - based on real portion size
+     * Protein (g) - accurate to ingredient composition
+     * Carbohydrates (g) - including complex carbs and sugars
+     * Fats (g) - account for cooking oil and natural fats
+     * Fiber (g) - from vegetables, fruits, whole grains
+     * Sugar (g) - natural and added sugars
    - Estimate key micronutrients (vitamins A, C, D, B12, minerals like iron, calcium)
+   - CRITICAL: Base all calculations on the ACTUAL ESTIMATED QUANTITY, not standard serving sizes
 
 3. CULTURAL & DIETARY CLASSIFICATION:
    - Regional cuisine identification (Indian, Chinese, Italian, etc.)
@@ -159,8 +164,15 @@ RETURN STRICTLY AS JSON IN THIS EXACT FORMAT:
   "confidenceLevel": 0-100,
   "personalizedInsights": ["insight 1", "insight 2"],
   "smartSuggestions": ["suggestion 1", "suggestion 2"],
-  "nutritionalWarnings": ["warning if any"]
-}`;
+  "nutritionalWarnings": ["warning if any"],
+  "calorieImpact": {
+    "percentageOfDailyGoal": 0,
+    "alignmentWithTargets": "under/optimal/over",
+    "macroBalance": "poor/good/excellent"
+  }
+}
+
+CRITICAL: Return ONLY valid JSON. No extra text, explanations, or markdown formatting.`;
 
     try {
       // Convert image to proper format for Gemini
@@ -177,14 +189,57 @@ RETURN STRICTLY AS JSON IN THIS EXACT FORMAT:
       ]);
 
       const response = result.response.text();
+      console.log('Raw AI response:', response); // Debug log
       
-      // Extract JSON from response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Invalid AI response format');
+      // Try to extract and parse JSON more robustly
+      let analysis: FoodAnalysis;
+      try {
+        // Look for JSON between code blocks first
+        const codeBlockMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
+        if (codeBlockMatch) {
+          analysis = JSON.parse(codeBlockMatch[1]);
+        } else {
+          // Fallback to finding JSON object
+          const jsonMatch = response.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) {
+            // If no JSON found, create a basic response
+            throw new Error('No JSON found in response');
+          }
+          analysis = JSON.parse(jsonMatch[0]);
+        }
+      } catch (parseError) {
+        console.error('JSON parsing failed:', parseError);
+        console.error('Response was:', response);
+        
+        // Fallback response
+        analysis = {
+          foodItems: [{
+            name: 'Unknown Food',
+            quantity: '1 serving',
+            confidence: 50,
+            calories: 200,
+            macros: { protein: 5, carbs: 20, fats: 8, fiber: 2, sugar: 5 },
+            micronutrients: { vitamins: {}, minerals: {} },
+            cookingMethod: 'unknown'
+          }],
+          totalCalories: 200,
+          totalMacros: { protein: 5, carbs: 20, fats: 8, fiber: 2 },
+          mealType: 'snack',
+          cuisineType: 'unknown',
+          dietaryTags: [],
+          communityClassification: 'general',
+          healthScore: 50,
+          confidenceLevel: 50,
+          personalizedInsights: ['Unable to analyze image properly'],
+          smartSuggestions: ['Try taking a clearer photo'],
+          nutritionalWarnings: [],
+          calorieImpact: {
+            percentageOfDailyGoal: 10,
+            alignmentWithTargets: 'under',
+            macroBalance: 'poor'
+          }
+        };
       }
-
-      const analysis: FoodAnalysis = JSON.parse(jsonMatch[0]);
       
       // Validate and sanitize the response
       return this.validateAndSanitizeAnalysis(analysis);
@@ -327,7 +382,7 @@ RETURN AS JSON:
 
   private validateAndSanitizeAnalysis(analysis: any): FoodAnalysis {
     // Ensure all required fields exist with defaults
-    return {
+    const validatedAnalysis: FoodAnalysis = {
       foodItems: analysis.foodItems || [],
       totalCalories: analysis.totalCalories || 0,
       totalMacros: analysis.totalMacros || { protein: 0, carbs: 0, fats: 0, fiber: 0 },
@@ -342,9 +397,55 @@ RETURN AS JSON:
       nutritionalWarnings: analysis.nutritionalWarnings || [],
       calorieImpact: {
         percentageOfDailyGoal: 0,
-        alignmentWithTargets: 'optimal',
-        macroBalance: 'good'
+        alignmentWithTargets: 'optimal' as const,
+        macroBalance: 'good' as const
       }
+    };
+
+    // Recalculate totals from individual items to ensure accuracy
+    const recalculatedCalories = validatedAnalysis.foodItems.reduce((sum: number, item: FoodItem) => sum + (item.calories || 0), 0);
+    const recalculatedMacros = validatedAnalysis.foodItems.reduce((totals: { protein: number; carbs: number; fats: number; fiber: number }, item: FoodItem) => ({
+      protein: totals.protein + (item.macros?.protein || 0),
+      carbs: totals.carbs + (item.macros?.carbs || 0),
+      fats: totals.fats + (item.macros?.fats || 0),
+      fiber: totals.fiber + (item.macros?.fiber || 0)
+    }), { protein: 0, carbs: 0, fats: 0, fiber: 0 });
+
+    // Use recalculated values if they differ significantly
+    if (Math.abs(validatedAnalysis.totalCalories - recalculatedCalories) > 50) {
+      validatedAnalysis.totalCalories = recalculatedCalories;
+    }
+    validatedAnalysis.totalMacros = recalculatedMacros;
+
+    return validatedAnalysis;
+  }
+
+  /**
+   * Calculate Indian food equivalents for calorie awareness
+   */
+  public static getIndianFoodEquivalents(calories: number): { samosa: number; jalebi: number; description: string } {
+    // Standard calorie values for popular Indian snacks
+    const SAMOSA_CALORIES = 262; // 1 medium samosa
+    const JALEBI_CALORIES = 150;  // 1 piece jalebi
+    
+    const samosaEquivalent = Math.round((calories / SAMOSA_CALORIES) * 10) / 10;
+    const jalebiEquivalent = Math.round((calories / JALEBI_CALORIES) * 10) / 10;
+    
+    let description: string;
+    if (calories >= SAMOSA_CALORIES) {
+      description = `${samosaEquivalent} samosas 🥟`;
+    } else if (calories >= JALEBI_CALORIES) {
+      description = `${jalebiEquivalent} jalebis 🍯`;
+    } else if (calories >= 50) {
+      description = `${Math.round(calories / 50)} ladoos 🍡`;
+    } else {
+      description = 'Less than 1 small sweet 🍬';
+    }
+    
+    return {
+      samosa: samosaEquivalent,
+      jalebi: jalebiEquivalent,
+      description
     };
   }
 

@@ -11,6 +11,7 @@ import {
   Dimensions,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,7 +22,7 @@ const { width, height } = Dimensions.get('window');
 
 interface Props {
   navigation: any;
-  userProfile: any; // UserProfile from SupabaseService
+  userProfile: any; // Mock user profile for demo
 }
 
 interface ScanningStage {
@@ -77,6 +78,114 @@ export const FoodScannerScreen: React.FC<Props> = ({ navigation, userProfile }) 
 
   // Services
   const foodService = new FoodRecognitionService(process.env.EXPO_PUBLIC_GEMINI_API_KEY!);
+
+  // Helper methods for enhanced UI
+  const renderRainbowAdherence = () => {
+    const rainbowColors = [
+      { color: 'Red', emoji: '🍎', foods: ['tomato', 'apple', 'strawberry', 'bell pepper'], count: 0 },
+      { color: 'Orange', emoji: '🥕', foods: ['carrot', 'orange', 'sweet potato', 'pumpkin'], count: 0 },
+      { color: 'Yellow', emoji: '🌽', foods: ['corn', 'banana', 'lemon', 'yellow pepper'], count: 0 },
+      { color: 'Green', emoji: '🥬', foods: ['spinach', 'broccoli', 'lettuce', 'peas'], count: 0 },
+      { color: 'Blue/Purple', emoji: '🍇', foods: ['blueberry', 'eggplant', 'grape', 'purple cabbage'], count: 0 }
+    ];
+
+    // Count rainbow colors in current meal
+    analysisResult?.foodItems.forEach(item => {
+      const itemName = item.name.toLowerCase();
+      rainbowColors.forEach(colorGroup => {
+        if (colorGroup.foods.some(food => itemName.includes(food))) {
+          colorGroup.count++;
+        }
+      });
+    });
+
+    const totalColors = rainbowColors.filter(group => group.count > 0).length;
+
+    return (
+      <View style={styles.rainbowSection}>
+        <Text style={styles.sectionTitle}>🌈 Rainbow Score</Text>
+        <View style={styles.rainbowCard}>
+          <View style={styles.rainbowHeader}>
+            <Text style={styles.rainbowScore}>{totalColors}/5</Text>
+            <Text style={styles.rainbowLabel}>Colors</Text>
+          </View>
+          <View style={styles.rainbowIndicators}>
+            {rainbowColors.map((colorGroup, index) => (
+              <View key={index} style={styles.rainbowIndicator}>
+                <Text style={[styles.rainbowEmoji, { opacity: colorGroup.count > 0 ? 1 : 0.3 }]}>
+                  {colorGroup.emoji}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.rainbowMessage}>
+            {totalColors >= 4 ? '🌟 Rainbow champion!' :
+             totalColors >= 3 ? '👍 Great variety!' :
+             totalColors >= 2 ? '🔄 Add more colors!' :
+             '🎨 Try the rainbow challenge!'}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  const getHealthImpactMessage = (analysis: RefinedAnalysis): string => {
+    const { healthScore, totalMacros } = analysis;
+    
+    if (healthScore >= 80) {
+      return 'Rich in nutrients and well-balanced. This meal supports your health goals!';
+    } else if (healthScore >= 60) {
+      return 'Good nutritional value with room for improvement. Consider adding more vegetables.';
+    } else if (totalMacros.fats > 30) {
+      return 'High in fats. Try balancing with fiber-rich vegetables next time.';
+    } else if (totalMacros.protein < 10) {
+      return 'Low in protein. Consider adding lean protein sources for better satiety.';
+    } else {
+      return 'Consider making healthier swaps to boost the nutritional value of your meal.';
+    }
+  };
+
+  const getBadgeForMeal = (analysis: RefinedAnalysis): { badge: string; message: string } | null => {
+    const { healthScore, totalMacros, foodItems } = analysis;
+    
+    // Check for various achievements
+    if (healthScore >= 85) {
+      return { badge: '🏆 Nutrition Master', message: 'Excellent meal choice!' };
+    }
+    if (totalMacros.protein >= 25) {
+      return { badge: '💪 Protein Power', message: 'Great protein intake!' };
+    }
+    if (foodItems.some(item => item.name.toLowerCase().includes('vegetable'))) {
+      return { badge: '🥬 Veggie Lover', message: 'Love those vegetables!' };
+    }
+    
+    return null;
+  };
+
+  const handleSaveWithGamification = () => {
+    const badge = getBadgeForMeal(analysisResult!);
+    const points = Math.floor(analysisResult!.healthScore / 10);
+    
+    setPointsEarned(points);
+    
+    if (badge) {
+      Alert.alert(
+        '🎉 Achievement Unlocked!',
+        `${badge.badge}\n${badge.message}\n\n+${points} points earned!`,
+        [
+          { text: 'Awesome!', onPress: () => navigation.goBack() }
+        ]
+      );
+    } else {
+      Alert.alert(
+        '✅ Meal Saved!',
+        `Logged successfully!\n+${points} points earned!`,
+        [
+          { text: 'Great!', onPress: () => navigation.goBack() }
+        ]
+      );
+    }
+  };
 
   useEffect(() => {
     // Pulse animation for scan button
@@ -293,48 +402,144 @@ export const FoodScannerScreen: React.FC<Props> = ({ navigation, userProfile }) 
                     <Text style={styles.confidenceText}>{item.confidence}%</Text>
                   </View>
                 </View>
-                <Text style={styles.foodItemQuantity}>{item.quantity}</Text>
+                <Text style={styles.foodItemQuantity}>
+                  Quantity: {item.quantity} | Method: {item.cookingMethod}
+                </Text>
                 <View style={styles.macroRow}>
-                  <Text style={styles.macroText}>Calories: {item.calories}</Text>
-                  <Text style={styles.macroText}>Protein: {item.macros.protein}g</Text>
+                  <Text style={styles.macroText}>🔥 {item.calories} cal</Text>
+                  <Text style={styles.macroText}>💪 {item.macros.protein}g protein</Text>
+                  <Text style={styles.macroText}>⚡ {item.macros.carbs}g carbs</Text>
+                  <Text style={styles.macroText}>🥑 {item.macros.fats}g fat</Text>
                 </View>
+                {item.macros.fiber > 0 && (
+                  <Text style={styles.fiberText}>🌾 {item.macros.fiber}g fiber</Text>
+                )}
               </View>
             ))}
           </View>
 
-          {/* Total Nutrition */}
-          <View style={styles.nutritionSummary}>
-            <Text style={styles.sectionTitle}>Nutrition Summary</Text>
-            <View style={styles.nutritionGrid}>
-              <View style={styles.nutritionCard}>
-                <Text style={styles.nutritionLabel}>Total Calories</Text>
-                <Text style={styles.nutritionValue}>{analysisResult.totalCalories}</Text>
+          {/* Contextual Nutrition Insights */}
+          <View style={styles.contextualNutritionSection}>
+            <Text style={styles.sectionTitle}>💡 What This Means for You</Text>
+            
+            {/* Calorie Context with Indian Food Equivalents */}
+            <View style={styles.contextCard}>
+              <View style={styles.contextHeader}>
+                <Text style={styles.contextTitle}>🔥 {analysisResult.totalCalories} Calories</Text>
+                <View style={styles.equivalentBadge}>
+                  <Text style={styles.equivalentText}>
+                    = {FoodRecognitionService.getIndianFoodEquivalents(analysisResult.totalCalories).description}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.nutritionCard}>
-                <Text style={styles.nutritionLabel}>Protein</Text>
-                <Text style={styles.nutritionValue}>{analysisResult.totalMacros.protein}g</Text>
+              
+              {/* Health Awareness Message */}
+              <View style={styles.awarenessSection}>
+                <Text style={styles.awarenessTitle}>🚨 Think Before You Eat</Text>
+                <Text style={styles.awarenessText}>
+                  This meal equals{' '}
+                  <Text style={styles.highlightText}>
+                    {FoodRecognitionService.getIndianFoodEquivalents(analysisResult.totalCalories).samosa} samosas
+                  </Text>
+                  {' '}or{' '}
+                  <Text style={styles.highlightText}>
+                    {FoodRecognitionService.getIndianFoodEquivalents(analysisResult.totalCalories).jalebi} jalebis
+                  </Text>
+                  {analysisResult.totalCalories > 500 && ' - that\'s a lot of sugar and oil! 🤔'}
+                </Text>
               </View>
-              <View style={styles.nutritionCard}>
-                <Text style={styles.nutritionLabel}>Carbs</Text>
-                <Text style={styles.nutritionValue}>{analysisResult.totalMacros.carbs}g</Text>
+              
+              {/* Daily Goal Progress */}
+              <View style={styles.progressSection}>
+                <Text style={styles.progressLabel}>Daily Goal Progress</Text>
+                <View style={styles.progressBarContainer}>
+                  <View style={styles.progressBar}>
+                    <View style={[styles.contextProgressFill, { 
+                      width: `${Math.min(100, (analysisResult.totalCalories / (userProfile?.dailyCalorieTarget || 2000)) * 100)}%`,
+                      backgroundColor: analysisResult.totalCalories > (userProfile?.dailyCalorieTarget || 2000) * 0.8 ? '#ff6b6b' : '#4CAF50'
+                    }]} />
+                  </View>
+                  <Text style={styles.contextProgressText}>
+                    {Math.round((analysisResult.totalCalories / (userProfile?.dailyCalorieTarget || 2000)) * 100)}% of daily target
+                  </Text>
+                </View>
               </View>
-              <View style={styles.nutritionCard}>
-                <Text style={styles.nutritionLabel}>Fats</Text>
-                <Text style={styles.nutritionValue}>{analysisResult.totalMacros.fats}g</Text>
+            </View>
+
+            {/* Macro Insights with Visual Progress */}
+            <View style={styles.macroInsightsGrid}>
+              <View style={styles.macroInsightCard}>
+                <Text style={styles.macroIcon}>💪</Text>
+                <Text style={styles.macroValue}>{analysisResult.totalMacros.protein}g</Text>
+                <Text style={styles.macroLabel}>Protein</Text>
+                <View style={styles.macroProgressBar}>
+                  <View style={[styles.macroProgressFill, { 
+                    width: `${Math.min(100, (analysisResult.totalMacros.protein / (userProfile?.dailyProteinTarget || 60)) * 100)}%`,
+                    backgroundColor: '#e74c3c'
+                  }]} />
+                </View>
+                <Text style={styles.macroPercentage}>
+                  {Math.round((analysisResult.totalMacros.protein / (userProfile?.dailyProteinTarget || 60)) * 100)}%
+                </Text>
+              </View>
+              
+              <View style={styles.macroInsightCard}>
+                <Text style={styles.macroIcon}>⚡</Text>
+                <Text style={styles.macroValue}>{analysisResult.totalMacros.carbs}g</Text>
+                <Text style={styles.macroLabel}>Carbs</Text>
+                <View style={styles.macroProgressBar}>
+                  <View style={[styles.macroProgressFill, { 
+                    width: `${Math.min(100, (analysisResult.totalMacros.carbs / (userProfile?.dailyCarbTarget || 250)) * 100)}%`,
+                    backgroundColor: '#f39c12'
+                  }]} />
+                </View>
+                <Text style={styles.macroPercentage}>
+                  {Math.round((analysisResult.totalMacros.carbs / (userProfile?.dailyCarbTarget || 250)) * 100)}%
+                </Text>
+              </View>
+              
+              <View style={styles.macroInsightCard}>
+                <Text style={styles.macroIcon}>🥑</Text>
+                <Text style={styles.macroValue}>{analysisResult.totalMacros.fats}g</Text>
+                <Text style={styles.macroLabel}>Fats</Text>
+                <View style={styles.macroProgressBar}>
+                  <View style={[styles.macroProgressFill, { 
+                    width: `${Math.min(100, (analysisResult.totalMacros.fats / (userProfile?.dailyFatTarget || 70)) * 100)}%`,
+                    backgroundColor: '#9b59b6'
+                  }]} />
+                </View>
+                <Text style={styles.macroPercentage}>
+                  {Math.round((analysisResult.totalMacros.fats / (userProfile?.dailyFatTarget || 70)) * 100)}%
+                </Text>
               </View>
             </View>
           </View>
 
-          {/* Health Score */}
-          <View style={styles.healthScoreContainer}>
-            <Text style={styles.sectionTitle}>Health Score</Text>
-            <View style={styles.healthScoreCircle}>
-              <Text style={styles.healthScoreText}>{analysisResult.healthScore}/100</Text>
-              <Text style={styles.healthScoreLabel}>
-                {analysisResult.healthScore >= 80 ? 'Excellent' :
-                 analysisResult.healthScore >= 60 ? 'Good' :
-                 analysisResult.healthScore >= 40 ? 'Fair' : 'Needs Improvement'}
-              </Text>
+          {/* Rainbow Food Adherence */}
+          {renderRainbowAdherence()}
+
+          {/* Health Impact Summary */}
+          <View style={styles.healthImpactSection}>
+            <Text style={styles.sectionTitle}>🎯 Health Impact</Text>
+            <View style={styles.impactCard}>
+              <View style={styles.impactHeader}>
+                <View style={[styles.healthScoreBadge, {
+                  backgroundColor: analysisResult.healthScore >= 80 ? '#4CAF50' :
+                                 analysisResult.healthScore >= 60 ? '#FF9800' : '#ff6b6b'
+                }]}>
+                  <Text style={styles.healthScoreNumber}>{analysisResult.healthScore}</Text>
+                </View>
+                <View style={styles.impactText}>
+                  <Text style={styles.impactTitle}>
+                    {analysisResult.healthScore >= 80 ? '🌟 Excellent choice!' :
+                     analysisResult.healthScore >= 60 ? '👍 Good choice!' :
+                     analysisResult.healthScore >= 40 ? '⚠️ Could be better' : '🚨 Consider alternatives'}
+                  </Text>
+                  <Text style={styles.impactDescription}>
+                    {getHealthImpactMessage(analysisResult)}
+                  </Text>
+                </View>
+              </View>
             </View>
           </View>
 
@@ -364,16 +569,24 @@ export const FoodScannerScreen: React.FC<Props> = ({ navigation, userProfile }) 
             </View>
           )}
 
+          {/* Gamification Achievement */}
+          {getBadgeForMeal(analysisResult) && (
+            <View style={styles.achievementSection}>
+              <View style={styles.achievementCard}>
+                <Text style={styles.achievementBadge}>{getBadgeForMeal(analysisResult)!.badge}</Text>
+                <Text style={styles.achievementMessage}>{getBadgeForMeal(analysisResult)!.message}</Text>
+                <Text style={styles.pointsEarned}>+{Math.floor(analysisResult.healthScore / 10)} points</Text>
+              </View>
+            </View>
+          )}
+
           {/* Action Buttons */}
           <View style={styles.actionButtons}>
             <TouchableOpacity 
               style={styles.saveButton}
-              onPress={() => {
-                Alert.alert('Saved!', 'Meal logged successfully');
-                navigation.goBack();
-              }}
+              onPress={handleSaveWithGamification}
             >
-              <Text style={styles.saveButtonText}>Save to Log</Text>
+              <Text style={styles.saveButtonText}>💾 Save to Log</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -385,7 +598,7 @@ export const FoodScannerScreen: React.FC<Props> = ({ navigation, userProfile }) 
                 resultsSlideAnim.setValue(height);
               }}
             >
-              <Text style={styles.retakeButtonText}>Scan Another</Text>
+              <Text style={styles.retakeButtonText}>📸 Scan Another</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -443,11 +656,11 @@ export const FoodScannerScreen: React.FC<Props> = ({ navigation, userProfile }) 
   );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       {!isAnalyzing && !analysisResult && renderScanOptions()}
       {isAnalyzing && renderScanningInterface()}
       {analysisResult && renderResults()}
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -724,6 +937,241 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 4,
   },
+  // New enhanced styles
+  contextualNutritionSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  contextCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  contextHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  contextTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1A1A1A',
+  },
+  equivalentBadge: {
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  equivalentText: {
+    fontSize: 12,
+    color: '#FF9800',
+    fontWeight: '600',
+  },
+  progressSection: {
+    marginTop: 8,
+  },
+  progressLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  progressBarContainer: {
+    marginBottom: 8,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  contextProgressFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  contextProgressText: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'right',
+  },
+  macroInsightsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  macroInsightCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  macroIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  macroValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1A1A1A',
+    marginBottom: 4,
+  },
+  macroLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  macroProgressBar: {
+    width: '100%',
+    height: 4,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  macroProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  macroPercentage: {
+    fontSize: 10,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  rainbowSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  rainbowCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  rainbowHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  rainbowScore: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FF6B6B',
+  },
+  rainbowLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  rainbowIndicators: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginBottom: 16,
+  },
+  rainbowIndicator: {
+    alignItems: 'center',
+  },
+  rainbowEmoji: {
+    fontSize: 28,
+  },
+  rainbowMessage: {
+    fontSize: 14,
+    color: '#4A90E2',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  healthImpactSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  impactCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  impactHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  healthScoreBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  healthScoreNumber: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  impactText: {
+    flex: 1,
+  },
+  impactTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1A1A1A',
+    marginBottom: 4,
+  },
+  impactDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  achievementSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  achievementCard: {
+    backgroundColor: '#FFF8E1',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFD54F',
+  },
+  achievementBadge: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#F57F17',
+    marginBottom: 8,
+  },
+  achievementMessage: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  pointsEarned: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+  },
   insightsSection: {
     paddingHorizontal: 20,
     marginBottom: 24,
@@ -795,5 +1243,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  awarenessSection: {
+    backgroundColor: '#FEF3F2',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F87171',
+  },
+  awarenessTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#991B1B',
+    marginBottom: 8,
+  },
+  awarenessText: {
+    fontSize: 13,
+    color: '#7F1D1D',
+    lineHeight: 18,
+  },
+  highlightText: {
+    fontWeight: 'bold',
+    color: '#DC2626',
+  },
+  fiberText: {
+    fontSize: 12,
+    color: '#059669',
+    marginTop: 4,
+    fontWeight: '500',
   },
 });
