@@ -284,10 +284,11 @@ Return either:
 2. Or just the single follow-up question.`;
 
       const conversationResponse = await conversationModel.generateContent(nextQuestionPrompt);
-      const aiResponse = conversationResponse.response.text().trim();
+      const rawResponse = conversationResponse.response.text().trim();
+      const aiResponse = rawResponse;
 
-      // Check if Gemini decided to conclude
-      if (aiResponse.startsWith('CONCLUDE_ASSESSMENT:')) {
+      // Case-insensitive conclude trigger
+      if (/^conclude_assessment:/i.test(aiResponse)) {
         const conclusionMessage: Message = {
           id: (Date.now() + 1).toString(),
           text: "Thanks for sharing! ✨ Let me put together your personalized wellness insights...",
@@ -299,6 +300,32 @@ Return either:
         setTimeout(() => {
           concludeConversation();
         }, 1500);
+        return;
+      }
+
+      // Heuristic early conclusion (avoid over-asking):
+      // If we've reached 5+ exchanges AND we have at least 4 responses collected
+      // plus some variance in emotionalTone or stress flags, we end.
+      const heuristicShouldConclude = () => {
+        if (conversationState.responses.length >= 4 && newCount >= 5) {
+          const uniqueStressFlags = new Set(conversationState.stressFlags).size;
+          const avgEnergy = conversationState.silentAnalysis.energy;
+            // simple variance check using energy & emotionalBalance deviation from neutral midpoint 3
+          const deviation = Math.abs(avgEnergy - 3) + Math.abs(conversationState.silentAnalysis.emotionalBalance - 3);
+          return uniqueStressFlags >= 1 || deviation >= 2; // enough signal collected
+        }
+        return false;
+      };
+
+      if (heuristicShouldConclude()) {
+        const conclusionMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: "Appreciate that, let me summarize a few wellness insights for you...",
+          isAI: true,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, conclusionMessage]);
+        setTimeout(() => concludeConversation(), 1200);
         return;
       }
 
